@@ -1,8 +1,8 @@
 {
-  "name": "@relay-network/discord-bot",
+  "name": "@relay-network/discord",
   "type": "module",
   "version": "0.0.1",
-  "description": "The official discord bot for the Relay Network",
+  "description": "The official Discord bot for the Relay Network",
   "engines": {
     "node": ">=18.15.0"
   },
@@ -14,14 +14,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/relay-network/discord-bot.git"
+    "url": "git+https://github.com/relay-network/discord.git"
   },
   "author": "relay.network",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/relay-network/discord-bot/issues"
+    "url": "https://github.com/relay-network/discord/issues"
   },
-  "homepage": "https://github.com/relay-network/discord-bot#README",
+  "homepage": "https://github.com/relay-network/discord#README",
   "devDependencies": {
     "@types/cors": "^2.8.13",
     "@types/express": "^4.17.17",
