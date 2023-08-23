@@ -1,0 +1,46 @@
+name: on-push-main
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    env:
+      APP_NAME: discord-bot
+      APP_ENV: production
+      APP_INSTANCE: production
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_ACTOR: ${{ github.actor }}
+      GITHUB_SHA: ${{ github.sha }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18.15.0
+      - run: ./scripts.publish.sh publish
+  deploy:
+    needs: publish
+    env:
+      DOCKER_HOST: ssh://relay-network-primary
+      APP_NAME: discord-bot
+      APP_ENV: production
+      APP_INSTANCE: production
+      PG_CONNECTION_STRING: ${{ secrets.PG_CONNECTION_STRING }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_ACTOR: ${{ github.actor }}
+      GITHUB_SHA: ${{ github.sha }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/relay-network/ops
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18.15.0
+      - run: ./scripts.deploy.sh

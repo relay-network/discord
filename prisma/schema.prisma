@@ -1,0 +1,591 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PG_CONNECTION_STRING")
+}
+
+model Question {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  text      String
+  Answer    Answer[]
+}
+
+model Answer {
+  id               String          @id @default(uuid())
+  createdAt        DateTime        @default(now())
+  text             String
+  question         Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId       String
+  usedPipelineIds  String[]
+  message          DiscordMessage?
+  discordMessageId String
+}
+
+model DiscordMessage {
+  id               String            @id @default(uuid())
+  answer           Answer            @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  answerId         String            @unique
+  discordMessageId String
+  discordChannelId String
+  reactions        DiscordReaction[]
+
+  @@unique([discordMessageId, discordChannelId])
+}
+
+model DiscordReaction {
+  id               String         @id @default(uuid())
+  createdAt        DateTime       @default(now())
+  discordUserId    String
+  discordMessage   DiscordMessage @relation(fields: [discordMessageId, discordChannelId], references: [discordMessageId, discordChannelId], onDelete: Cascade)
+  discordMessageId String
+  discordChannelId String
+  type             ReactionType
+
+  @@unique([discordUserId, discordMessageId, discordChannelId])
+}
+
+enum ReactionType {
+  THUMBS_UP
+  THUMBS_DOWN
+}
+
+model Log {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  message   String
+  params    Json     @default("{}")
+  level     Severity
+}
+
+enum Severity {
+  ERROR
+  WARN
+}
+
+model Pipeline {
+  id                 String               @id @default(uuid())
+  createdAt          DateTime             @default(now())
+  sourceDocuments    SourceDocument[]
+  KnowledgeEmbedding KnowledgeEmbedding[]
+  PipelineAlias      PipelineAlias[]
+}
+
+model SourceDocument {
+  id                    String                 @id @default(uuid())
+  createdAt             DateTime               @default(now())
+  textFromHtml          String
+  pageUrl               String
+  pipeline              Pipeline               @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  pipelineId            String
+  topicCompletions      TopicCompletion[]
+  topicCompletionErrors TopicCompletionError[]
+}
+
+model Prompt {
+  id                      String                    @id @default(uuid())
+  createdAt               DateTime                  @default(now())
+  text                    String
+  type                    PromptType
+  TopicCompletion         TopicCompletion[]
+  TopicCompletionError    TopicCompletionError[]
+  QuestionCompletion      QuestionCompletion[]
+  QuestionCompletionError QuestionCompletionError[]
+}
+
+enum PromptType {
+  TOPIC_COMPLETION
+  QUESTION_COMPLETION
+  ASK_COMPLETION
+  ERROR
+}
+
+model TopicCompletion {
+  id                       String                    @id @default(uuid())
+  createdAt                DateTime                  @default(now())
+  completion               String
+  sourceDocument           SourceDocument            @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceDocumentId         String
+  questionCompletions      QuestionCompletion[]
+  questionCompletionErrors QuestionCompletionError[]
+  promptId                 String
+  prompt                   Prompt                    @relation(fields: [promptId], references: [id], onDelete: Cascade)
+}
+
+model TopicCompletionError {
+  id               String         @id @default(uuid())
+  createdAt        DateTime       @default(now())
+  message          String
+  sourceDocument   SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceDocumentId String
+  promptId         String
+  prompt           Prompt         @relation(fields: [promptId], references: [id], onDelete: Cascade)
+}
+
+model QuestionCompletion {
+  id                  String               @id @default(uuid())
+  createdAt           DateTime             @default(now())
+  completion          String
+  topicCompletion     TopicCompletion      @relation(fields: [topicCompletionId], references: [id], onDelete: Cascade)
+  topicCompletionId   String
+  knowledgeEmbeddings KnowledgeEmbedding[]
+  topic               String
+  promptId            String
+  prompt              Prompt               @relation(fields: [promptId], references: [id], onDelete: Cascade)
+}
+
+model QuestionCompletionError {
+  id                String          @id @default(uuid())
+  createdAt         DateTime        @default(now())
+  message           String
+  topicCompletion   TopicCompletion @relation(fields: [topicCompletionId], references: [id], onDelete: Cascade)
+  topicCompletionId String
+  topic             String
+  promptId          String
+  prompt            Prompt          @relation(fields: [promptId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeEmbedding {
+  id                   String                      @id @default(uuid())
+  createdAt            DateTime                    @default(now())
+  questionCompletion   QuestionCompletion          @relation(fields: [questionCompletionId], references: [id], onDelete: Cascade)
+  questionCompletionId String
+  text                 String
+  pipelineId           String
+  pipeline             Pipeline                    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  embedding            Unsupported("vector(1536)")
+}
+
+model QueryEmbedding {
+  id        String                      @id @default(uuid())
+  createdAt DateTime                    @default(now())
+  text      String
+  embedding Unsupported("vector(1536)")
+}
+
+model Evaluation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  channelId String
+}
+
+//*****************************************************************************
+//
+// BEGIN ANALYTICAL ENGINE
+//
+//*****************************************************************************
+
+model Execution {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  input     String
+
+  program   Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  programId String
+
+  trajectory   Trajectory @relation(fields: [trajectoryId], references: [id], onDelete: Cascade)
+  trajectoryId String
+
+  selectedNode   ProgramNode? @relation("selectedNode", fields: [selectedNodeId], references: [id])
+  selectedNodeId String?
+
+  expandedNode   ProgramNode? @relation("expandedNode", fields: [expandedNodeId], references: [id])
+  expandedNodeId String?
+
+  evaluation String?
+
+  @@unique([trajectoryId])
+}
+
+model Program {
+  id          String        @id @default(uuid())
+  createdAt   DateTime      @default(now())
+  description Json
+  engine      Engine        @relation(fields: [engineId], references: [id])
+  engineId    String
+  executions  Execution[]
+  nodes       ProgramNode[]
+}
+
+model ProgramNode {
+  id                    String        @id @default(uuid())
+  createdAt             DateTime      @default(now())
+  program               Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
+  programId             String
+  primitive             Primitive     @relation(fields: [primitiveId], references: [id], onDelete: Cascade)
+  primitiveId           String
+  childrenEdges         ProgramEdge[] @relation("fromProgramNode")
+  parentEdge            ProgramEdge?  @relation("toProgramNode")
+  selectedForExecutions Execution[]   @relation("selectedNode")
+  expandedForExecutions Execution[]   @relation("expandedNode")
+
+  @@unique([id, primitiveId])
+}
+
+model ProgramEdge {
+  id                String      @id @default(uuid())
+  createdAt         DateTime    @default(now())
+  toNode            ProgramNode @relation("toProgramNode", fields: [toNodeId, toNodePrimitiveId], references: [id, primitiveId], onDelete: Cascade)
+  toNodeId          String
+  toNodePrimitiveId String
+  fromNode          ProgramNode @relation("fromProgramNode", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  fromNodeId        String
+
+  @@unique([toNodeId])
+  @@unique([toNodeId, fromNodeId])
+  @@unique([toNodeId, toNodePrimitiveId])
+}
+
+model Trajectory {
+  id        String           @id @default(uuid())
+  createdAt DateTime         @default(now())
+  execution Execution?
+  nodes     TrajectoryNode[]
+  edges     TrajectoryEdge[]
+}
+
+model TrajectoryNode {
+  id           String           @id @default(uuid())
+  createdAt    DateTime         @default(now())
+  trajectory   Trajectory       @relation(fields: [trajectoryId], references: [id], onDelete: Cascade)
+  trajectoryId String
+  primitive    Primitive        @relation(fields: [primitiveId], references: [id], onDelete: Cascade)
+  primitiveId  String
+  input        String?
+  output       String?
+  errorMessage String?
+  childEdge    TrajectoryEdge[] @relation("fromTrajectoryNode")
+  parentEdge   TrajectoryEdge?  @relation("toTrajectoryNode")
+}
+
+model TrajectoryEdge {
+  id           String         @id @default(uuid())
+  createdAt    DateTime       @default(now())
+  trajectory   Trajectory     @relation(fields: [trajectoryId], references: [id], onDelete: Cascade)
+  trajectoryId String
+  toNode       TrajectoryNode @relation("toTrajectoryNode", fields: [toNodeId], references: [id], onDelete: Cascade)
+  toNodeId     String         @unique
+  fromNode     TrajectoryNode @relation("fromTrajectoryNode", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  fromNodeId   String
+
+  @@unique([toNodeId, fromNodeId])
+}
+
+model Engine {
+  id          String              @id @default(uuid())
+  createdAt   DateTime            @default(now())
+  name        String              @unique
+  description String
+  selector    Selector            @relation(fields: [selectorId], references: [id])
+  selectorId  String
+  expander    Expander            @relation(fields: [expanderId], references: [id], onDelete: Cascade)
+  expanderId  String
+  simulator   Simulator           @relation(fields: [simulatorId], references: [id])
+  simulatorId String
+  evaluator   Evaluator           @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+  evaluatorId String
+  primitives  EnginesPrimitives[]
+  programs    Program[]
+}
+
+model EnginesPrimitives {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  engine      Engine    @relation(fields: [engineId], references: [id], onDelete: Cascade)
+  engineId    String
+  primitive   Primitive @relation(fields: [primitiveId], references: [id], onDelete: Cascade)
+  primitiveId String
+}
+
+model Selector {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  name        String   @unique
+  description String
+  engines     Engine[]
+}
+
+model Expander {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  name        String   @unique
+  description String
+  engines     Engine[]
+}
+
+model Simulator {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  name        String   @unique
+  description String
+  engines     Engine[]
+}
+
+model Evaluator {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  name        String   @unique
+  description String
+  engines     Engine[]
+}
+
+model Primitive {
+  id              String              @id @default(uuid())
+  createdAt       DateTime            @default(now())
+  name            String              @unique
+  description     String
+  inputSchema     String
+  outputSchema    String
+  engines         EnginesPrimitives[]
+  programNodes    ProgramNode[]
+  trajectoryNodes TrajectoryNode[]
+}
+
+//*****************************************************************************
+//
+// END ANALYTICAL ENGINE
+//
+//*****************************************************************************
+
+model Analysis {
+  id           String         @id @default(uuid())
+  createdAt    DateTime       @default(now())
+  name         String
+  description  String
+  params       Json
+  AnalysisNode AnalysisNode[]
+  AnalysisEdge AnalysisEdge[]
+  Trajectory_  Trajectory_[]
+}
+
+model AnalysisNode {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  analysis      Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  analysisId    String
+  primitiveName String
+}
+
+model AnalysisEdge {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  analysisId String
+  from       String
+  to         String
+  transform  String
+}
+
+model Trajectory_ {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+  analysis     Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  analysisId   String
+  params       Json
+  globalParams Json
+  starterId    String? //the id of the outermost trajectory
+  previousId   String? //the id of the creator trajectory
+}
+
+model CrawlerTarget {
+  id                         String            @id @default(uuid())
+  createdAt                  DateTime          @default(now())
+  fromUrl                    String
+  blacklist                  String[]
+  whitelist                  String[]
+  limit                      Int
+  requestsFinished           Int?
+  requestsFailed             Int?
+  requestTotalDurationMillis Int?
+  requestsTotal              Int?
+  crawlerRuntimeMillis       Int?
+  CrawledDocument            CrawledDocument[]
+}
+
+model CrawledDocument {
+  id              String        @id @default(uuid())
+  createdAt       DateTime      @default(now())
+  textFromHtml    String
+  pageUrl         String
+  crawlerTarget   CrawlerTarget @relation(fields: [crawlerTargetId], references: [id], onDelete: Cascade)
+  crawlerTargetId String
+}
+
+model Embedding {
+  id                 String                      @id @default(uuid())
+  createdAt          DateTime                    @default(now())
+  type               EmbeddingReferenceType
+  embeddingRequest   RawEmbedding                @relation(fields: [embeddingRequestId], references: [id], onDelete: Cascade)
+  embeddingRequestId String
+  referenceId        String
+  embedding          Unsupported("vector(1536)")
+}
+
+enum EmbeddingReferenceType {
+  USER_QUESTION_EMBEDDING
+  KNOWLEDGE_EMBEDDING
+}
+
+model RawCompletion {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  call      String
+  response  String?
+  runtime   Int?
+}
+
+model RawEmbedding {
+  id        String      @id @default(uuid())
+  createdAt DateTime    @default(now())
+  call      String
+  response  String?
+  runtime   Int?
+  Embedding Embedding[]
+}
+
+//*****************************************************************************
+//
+// BEGIN OPENAI API
+//
+//*****************************************************************************
+
+model OpenAICompletionRequest {
+  id          String                     @id @default(uuid())
+  createdAt   DateTime                   @default(now())
+  model       OpenAICompletionModel
+  prompt      String
+  maxTokens   Int                        @default(16)
+  temperature Float                      @default(1.0)
+  topP        Float                      @default(1.0)
+  n           Int                        @default(1)
+  stop        String[]
+  response    OpenAICompletionResponse[]
+}
+
+model OpenAICompletionResponse {
+  id                    String                   @id @default(uuid())
+  createdAt             DateTime                 @default(now())
+  usagePromptTokens     Int
+  usageCompletionTokens Int
+  choices               OpenAICompletionChoice[]
+  request               OpenAICompletionRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId             String
+}
+
+model OpenAICompletionChoice {
+  id           String                   @id @default(uuid())
+  createdAt    DateTime                 @default(now())
+  text         String
+  finishReason String
+  response     OpenAICompletionResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  responseId   String
+}
+
+enum OpenAICompletionModel {
+  TEXT_DAVINCI_003
+}
+
+model OpenAIChatCompletionRequest {
+  id          String                               @id @default(uuid())
+  createdAt   DateTime                             @default(now())
+  model       OpenAIChatCompletionModel
+  messages    OpenAIChatCompletionRequestMessage[]
+  temperature Float                                @default(1.0)
+  topP        Float                                @default(1.0)
+  n           Int                                  @default(1)
+  stop        String[]
+  maxTokens   Int                                  @default(1000000)
+  response    OpenAIChatCompletionResponse[]
+  functions   OpenAIChatCompletionFunction[]
+}
+
+model OpenAIChatCompletionFunction {
+  id          String                      @id @default(uuid())
+  createdAt   DateTime                    @default(now())
+  name        String
+  description String
+  paramters   Json
+  request     OpenAIChatCompletionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId   String
+}
+
+model OpenAIChatCompletionRequestMessage {
+  id                    String                          @id @default(uuid())
+  createdAt             DateTime                        @default(now())
+  role                  OpenAIChatCompletionMessageRole
+  content               String
+  request               OpenAIChatCompletionRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId             String
+  functionCallName      String?
+  functionCallArguments String?
+}
+
+enum OpenAIChatCompletionMessageRole {
+  SYSTEM
+  ASSISTANT
+  USER
+  FUNCTION
+}
+
+enum OpenAIChatCompletionModel {
+  GPT_3_TURBO
+  GPT_4
+  GPT_3_TURBO_0613
+}
+
+model OpenAIChatCompletionResponse {
+  id                    String                       @id @default(uuid())
+  createdAt             DateTime                     @default(now())
+  usagePromptTokens     Int
+  usageCompletionTokens Int
+  request               OpenAIChatCompletionRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId             String
+  choices               OpenAIChatCompletionChoice[]
+}
+
+model OpenAIChatCompletionChoice {
+  id                           String                                   @id @default(uuid())
+  createdAt                    DateTime                                 @default(now())
+  finishReason                 String?
+  response                     OpenAIChatCompletionResponse             @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  responseId                   String
+  messageRole                  OpenAIChatCompletionResponseMessageRole?
+  messageContent               String?
+  messageFunctionCallName      String?
+  messageFunctionCallArguments String?
+}
+
+enum OpenAIChatCompletionResponseMessageRole {
+  ASSISTANT
+}
+
+//*****************************************************************************
+//
+// END OPENAI API
+//
+//*****************************************************************************
+
+model PipelineAlias {
+  id                          String                        @id @default(uuid())
+  createdAt                   DateTime                      @default(now())
+  name                        String?
+  ethAddress                  String?
+  ensAddress                  String?
+  pipeline                    Pipeline                      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  pipelineId                  String
+  discordGuildId              String?
+  discordManagementChannelId  String?
+  DiscordGuildToPipelineAlias DiscordGuildToPipelineAlias[]
+}
+
+model DiscordGuildToPipelineAlias {
+  id        String        @id @default(uuid())
+  createdAt DateTime      @default(now())
+  guildId   String
+  as        String
+  alias     PipelineAlias @relation(fields: [aliasId], references: [id], onDelete: Cascade)
+  aliasId   String
+}
